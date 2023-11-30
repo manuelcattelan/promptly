@@ -1,62 +1,77 @@
-# Load color variables
-autoload -U colors && colors
+PROMPTLY_ROOT=${${(%):-%x}:A:h}
 
-# Initialize async library
-source $(dirname "$0")/async.zsh
+source "$PROMPTLY_ROOT/async/async.zsh"
+source "$PROMPTLY_ROOT/lib/git.zsh"
+
+autoload -U colors && colors
+autoload -Uz add-zsh-hook
+
 async_init
 
-# Define prompt variables
-GIT_PROMPT_PREFIX="%{$fg_bold[blue]%}git:(%{$fg[red]%}"
-GIT_PROMPT_SUFFIX="%{$reset_color%} "
-GIT_PROMPT_DIRTY="%{$fg[blue]%}) %{$fg[yellow]%}%1{✗%}"
-GIT_PROMPT_CLEAN="%{$fg[blue]%})"
+promptly_default_prompt="%(?:%{$fg_bold[green]%}%1{❯%} :%{$fg_bold[red]%}%1{❯%} ) %{$fg[cyan]%}%c%{$reset_color%}"
 
-function __git_prompt_git() {
-  GIT_OPTIONAL_LOCKS=0 command git "$@"
+function promptly_update() {
+  PROMPT="$promptly_default_prompt $promptly_git_data[promptly_git_prefix]$promptly_git_data[promptly_git_branch]$promptly_git_data[promptly_git_dirty]$promptly_git_data[promptly_git_suffix]"
+
+  zle -R && zle reset-prompt
 }
 
-function git_prompt_job(){
-  # If current working directory is not a git work tree, return.
-  # Else, retrieve git information to display inside prompt.
-  if ! __git_prompt_git rev-parse --is-inside-work-tree &> /dev/null \
-     || [[ "$(__git_prompt_git config 2>/dev/null)" == 1 ]]; then
-    return 0
-  fi 
+function promptly_init_worker() {
+  async_start_worker promptly_worker -n
+  async_register_callback promptly_worker promptly_callback
+}
 
-  local ref
-  ref=$(__git_prompt_git symbolic-ref --short HEAD 2> /dev/null) \
-  || ref=$(__git_prompt_git describe --tags --exact-match HEAD 2> /dev/null) \
-  || ref=$(__git_prompt_git rev-parse --short HEAD 2> /dev/null) \
-  || return 0
+function promptly_init_jobs() {
+  typeset -Ag promptly_git_data
 
-  local git_status
-  local git_status_icon
-  if [[ "$(__git_prompt_git config 2>/dev/null)" != "1" ]]; then
-    git_status=$(__git_prompt_git status --porcelain 2> /dev/null | tail -n 1)
-  fi
-  if [[ -n $git_status ]]; then
-    git_status_icon="$GIT_PROMPT_DIRTY"
+  local promptly_pwd="$PWD"
+  async_worker_eval promptly_worker builtin cd -q $promptly_pwd
+
+  if (promptly_git_directory); then
+    async_flush_jobs promptly_worker
+
+    promptly_git_data[promptly_git_prefix]=$GIT_PROMPT_PREFIX
+    promptly_git_data[promptly_git_suffix]=$GIT_PROMPT_SUFFIX
+    
+    async_job promptly_worker promptly_git_branch
+    async_job promptly_worker promptly_git_dirty
   else
-    git_status_icon="$GIT_PROMPT_CLEAN"
-  fi
+    promptly_git_data[promptly_git_prefix]= 
+    promptly_git_data[promptly_git_suffix]= 
 
-  echo "${GIT_PROMPT_PREFIX}${ref:gs/%/%%}${git_status_icon}${GIT_PROMPT_SUFFIX}"
+    promptly_git_data[promptly_git_branch]= 
+    promptly_git_data[promptly_git_dirty]= 
+  fi;
+
+  promptly_update
 }
 
-# Initialize a new worker (with notify option)
-async_start_worker git_prompt_worker -n
+function promptly_callback() {
+  local job_name=$1
+  local job_return_code=$2
+  local job_output=$3
 
-# Create a callback function to process results
-function git_prompt_callback() {
-  PROMPT="%(?:%{$fg_bold[green]%}%1{❯%} :%{$fg_bold[red]%}%1{❯%} )%{$fg[cyan]%}%c%{$reset_color%}"
-  PROMPT+=" $3"
+  if (( job_return_code == 2 )) \
+  || (( job_return_code == 3 )) \
+  || (( job_return_code == 130 )); then
+    async_stop_worker promptly_worker
+    promptly_init_worker
+    promptly_init_jobs
+  elif (( job_return_code )); then
+    promptly_init_jobs
+  fi;
 
-  # Reset prompt with updated info
-  zle reset-prompt
+  promptly_git_data[$job_name]=$job_output
+  promptly_update
 }
 
-# Give the worker some tasks to perform
-async_job git_prompt_worker git_prompt_job
+function promptly_setup() {
+  promptly_init_worker
+  promptly_init_jobs
 
-# Register callback function for the workers completed jobs
-async_register_callback git_prompt_worker git_prompt_callback
+  add-zsh-hook precmd promptly_init_jobs
+
+  PROMPT="$promptly_default_prompt"
+}
+
+promptly_setup
