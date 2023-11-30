@@ -3,9 +3,7 @@
 
 <img src="promptly.png" width="864">
 
----
-
-# Acknowledgements
+## Acknowledgements
 - [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh)
 - [typewritten](https://github.com/reobin/typewritten)
 - [zsh-async](https://github.com/mafredri/zsh-async)
