@@ -10,7 +10,7 @@ autoload -Uz add-zsh-hook
 async_init
 
 # Default prompt format
-promptly_default_prompt="%(?:%{$fg_bold[green]%}%1{❯%} :%{$fg_bold[red]%}%1{❯%} ) %{$fg[cyan]%}%c%{$reset_color%}"
+promptly_default_prompt="%(?:%{$fg_bold[green]%}%1{❯%} :%{$fg_bold[red]%}%1{❯%} )%{$fg[cyan]%}%c%{$reset_color%}"
 
 #
 # Update prompt format with most recent data and reset it to show changes.
